@@ -95,3 +95,6 @@ threading.Thread(target=schedule_checker, daemon=True).start()
 if __name__ == "__main__":
     keep_alive()
     bot.infinity_polling()
+@bot.message_handler(func=lambda m: m.text.lower() in ["hi", "hello", "hey"] and m.chat.id not in user_state)
+def greet_user(message):
+    bot.reply_to(message, "Hello! Reminder set karne ke liye /start likhiye 😊")
