@@ -89,7 +89,7 @@ def schedule_checker():
         schedule.run_pending()
         time.sleep(30)
 
-schedule.every().day.at("09:00").do(send_reminders)
+schedule.every().day.at("02:40").do(send_reminders)
 threading.Thread(target=schedule_checker, daemon=True).start()
 
 if __name__ == "__main__":
