@@ -89,7 +89,7 @@ def handle_all(message):
             bot.reply_to(message, "Pehle choose karein:\n1. Birthday\n2. Anniversary")
     elif "type" in state and "name" not in state:
         user_state[chat_id]["name"] = text
-        bot.reply_to(message, "Date bataiye Burthday/Anniversary ki (jaise: 01-01-2000 ya 1 Jan 2000):")
+        bot.reply_to(message, "Date bataiye Birthday/Anniversary ki (jaise: 01-01-2000 ya 1 Jan 2000):")
     elif "name" in state and "date" not in state:
         try:
             dob = parser.parse(text, dayfirst=True).date()
