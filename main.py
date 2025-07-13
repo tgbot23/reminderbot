@@ -119,4 +119,5 @@ def handle_all(message):
         bot.reply_to(message, "Kuch galat likh diya hai. /start se dobara try karein.")
 
 # Start polling
+bot.remove_webhook()
 bot.infinity_polling()
