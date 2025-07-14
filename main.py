@@ -1,7 +1,7 @@
 import os
 import json
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime
 from dateutil import parser
 import pytz
 import gspread
@@ -24,13 +24,13 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# Constants for conversation states
+# Conversation states
 TYPE, NAME, DATE, TIME = range(4)
 
-# Timezone
+# Timezone for IST
 IST = pytz.timezone("Asia/Kolkata")
 
-# Load Google Sheet credentials and open sheet
+# Google Sheet helper functions
 def get_google_sheet():
     scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
     creds_json = json.loads(os.environ["GOOGLE_CREDS_JSON"])
@@ -39,7 +39,6 @@ def get_google_sheet():
     sheet = client.open("Telegram Reminders").sheet1
     return sheet
 
-# Append reminder to Google Sheet
 def add_to_google_sheet(chat_id, type_, name, date, time_):
     try:
         sheet = get_google_sheet()
@@ -48,14 +47,13 @@ def add_to_google_sheet(chat_id, type_, name, date, time_):
     except Exception as e:
         logger.error(f"Error adding to Google Sheet: {e}")
 
-# Start command handler
+# Conversation handlers
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
         "Namaste! Kis cheez ka reminder chahiye?\n1. Birthday\n2. Anniversary"
     )
     return TYPE
 
-# Handle type selection
 async def type_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text.strip()
     if text == "1":
@@ -68,7 +66,6 @@ async def type_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("Naam bataiye (jiska reminder chahiye):")
     return NAME
 
-# Handle name input
 async def name_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data["name"] = update.message.text.strip()
     await update.message.reply_text(
@@ -76,7 +73,6 @@ async def name_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
     return DATE
 
-# Handle date input
 async def date_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text.strip()
     try:
@@ -92,7 +88,6 @@ async def date_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return DATE
 
-# Handle time input and save reminder
 async def time_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text.strip().upper()
     try:
@@ -122,12 +117,11 @@ async def time_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return TIME
 
-# Cancel handler
 async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("Reminder creation cancelled. /start se dobara try karein.")
     return ConversationHandler.END
 
-# Job to send reminders every minute
+# Reminder sending job
 async def send_reminders(context: ContextTypes.DEFAULT_TYPE):
     try:
         now = datetime.now(IST)
@@ -138,7 +132,6 @@ async def send_reminders(context: ContextTypes.DEFAULT_TYPE):
         records = sheet.get_all_records()
 
         for entry in records:
-            # Check if date matches today and time matches current time ±1 minute window
             if entry.get("date", "")[:5] == today and entry.get("time", "") == current_time:
                 years = now.year - int(entry["date"][-4:])
                 if entry["type"] == "Birthday":
@@ -159,9 +152,11 @@ def main():
         logger.error("BOT_TOKEN environment variable not set")
         return
 
-    application = ApplicationBuilder().token(TOKEN).build()
+    # Create JobQueue explicitly
+    job_queue = JobQueue()
 
-    # Conversation handler for reminder creation
+    application = ApplicationBuilder().token(TOKEN).job_queue(job_queue).build()
+
     conv_handler = ConversationHandler(
         entry_points=[CommandHandler("start", start)],
         states={
@@ -175,11 +170,10 @@ def main():
 
     application.add_handler(conv_handler)
 
-    # Schedule reminder job every minute
-    job_queue: JobQueue = application.job_queue
+    # Schedule the reminders job every minute
     job_queue.run_repeating(send_reminders, interval=60, first=10)
 
-    # Start the bot
+    # Start the bot (this blocks and auto-reconnects)
     application.run_polling()
 
 if __name__ == "__main__":
