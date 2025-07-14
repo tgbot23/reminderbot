@@ -38,14 +38,16 @@ def scheduled_remind():
 
 # Google Sheets setup
 def get_google_sheet():
-    scope = [...]
+    scope = ['https://spreadsheets.google.com/feeds',
+             'https://www.googleapis.com/auth/drive']
     creds_json = json.loads(os.environ["GOOGLE_CREDS_JSON"])
     creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_json, scope)
     client = gspread.authorize(creds)
     return client.open("Telegram Reminders").sheet1
 
 def add_to_google_sheet(chat_id, type_, name, date, time_):
-    ...
+    # This part you should already have
+    pass
 
 def send_reminders():
     try:
@@ -72,9 +74,20 @@ def send_reminders():
     except Exception as e:
         print("❌ Error in send_reminders():", e)
 
-# Telegram handlers and webhook setup (unchanged)
-...
+# === Webhook endpoint ===
+@app.route(f'/{TOKEN}', methods=['POST'])
+def receive_update():
+    json_string = request.get_data().decode('utf-8')
+    update = telebot.types.Update.de_json(json_string)
+    bot.process_new_updates([update])
+    return '!', 200
 
+# === Optional health check ===
+@app.route('/', methods=['GET'])
+def index():
+    return "Bot is running!", 200
+
+# === Main entry point ===
 if __name__ == '__main__':
     bot.remove_webhook()
     bot.set_webhook(url=f"{os.environ.get('RENDER_APP_URL')}/{TOKEN}")
