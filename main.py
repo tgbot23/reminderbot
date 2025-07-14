@@ -42,10 +42,12 @@ def send_reminders():
         now = datetime.now(IST)
         current_time = now.strftime("%H:%M")
         today = now.strftime("%d-%m")
-         print(f"⏱️ send_reminders called — today: {today}, current_time: {current_time}")
+
+        print(f"⏱️ send_reminders called — today: {today}, current_time: {current_time}")
         sheet = get_google_sheet()
         records = sheet.get_all_records()
         print(f"🔍 Retrieved {len(records)} records from Google Sheet")
+
 
         sheet = get_google_sheet()
         records = sheet.get_all_records()
@@ -64,11 +66,12 @@ def send_reminders():
                     print(f"❌ Error sending reminder: {e}")
     except Exception as e:
         print("❌ Error in send_reminders():", e)
-
+        
 def schedule_checker():
     schedule.every().minute.do(send_reminders)
     while True:
-        schedule.run_pending()
+        try:
+            schedule.run_pending()
         except Exception as e:
             print("❌ Scheduler crashed:", e)
         time.sleep(1)  # reduced from 30 seconds for quicker retries
