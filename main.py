@@ -22,6 +22,20 @@ bot = telebot.TeleBot(TOKEN)
 IST = pytz.timezone("Asia/Kolkata")
 
 app = Flask(__name__)
+if __name__ == "__main__":
+    import os
+    port = int(os.environ.get("PORT", 5000))
+    print(f"Starting Flask app on port {port}...")
+
+    # Start the schedule thread
+    threading.Thread(target=schedule_checker, daemon=True).start()
+
+    # Start the bot polling in a separate thread (so Flask can run)
+    threading.Thread(target=bot.infinity_polling, daemon=True).start()
+
+    # Run Flask app (bind to all interfaces)
+    app.run(host="0.0.0.0", port=port)
+
 
 # --- Google Sheets Setup ---
 
