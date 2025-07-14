@@ -45,10 +45,6 @@ def get_google_sheet():
     client = gspread.authorize(creds)
     return client.open("Telegram Reminders").sheet1
 
-def add_to_google_sheet(chat_id, type_, name, date, time_):
-    # This part you should already have
-    pass
-
 def send_reminders():
     try:
         now = datetime.now(IST)
@@ -73,6 +69,15 @@ def send_reminders():
                     print(f"❌ Error sending reminder: {e}")
     except Exception as e:
         print("❌ Error in send_reminders():", e)
+
+# === Message handlers ===
+@bot.message_handler(commands=['start'])
+def send_welcome(message):
+    bot.reply_to(message, "👋 Welcome! Main reminder bot hoon. Mujhe birthday ya anniversary ka data bhejiye.")
+
+@bot.message_handler(func=lambda message: True)
+def echo_all(message):
+    bot.reply_to(message, "📩 Aapne likha: " + message.text)
 
 # === Webhook endpoint ===
 @app.route(f'/{TOKEN}', methods=['POST'])
