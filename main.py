@@ -1,67 +1,55 @@
+import telebot
 import os
 import json
+import gspread
+from oauth2client.service_account import ServiceAccountCredentials
 from datetime import datetime
 from dateutil import parser
 import pytz
-from flask import Flask, request
-import telebot
-import gspread
-from oauth2client.service_account import ServiceAccountCredentials
-
-# APScheduler imports
-from flask_apscheduler import APScheduler
+import threading
+import schedule
+import time
 
 # Bot token and timezone
 TOKEN = os.environ.get("BOT_TOKEN")
 bot = telebot.TeleBot(TOKEN)
 IST = pytz.timezone("Asia/Kolkata")
 
-# Flask app
-app = Flask(__name__)
-
-# === APScheduler CONFIGURATION START ===
-
-class Config:
-    SCHEDULER_API_ENABLED = False  # no REST API needed
-
-app.config.from_object(Config())
-
-scheduler = APScheduler()
-scheduler.init_app(app)
-scheduler.start()
-
-@scheduler.task('cron', id='reminder_job', minute='*')
-def scheduled_remind():
-    send_reminders()
-
-# === APScheduler CONFIGURATION END ===
-
-# Google Sheets setup
+# Load Google Sheet credentials from environment
 def get_google_sheet():
-    scope = ['https://spreadsheets.google.com/feeds',
-             'https://www.googleapis.com/auth/drive']
+    scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
     creds_json = json.loads(os.environ["GOOGLE_CREDS_JSON"])
     creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_json, scope)
     client = gspread.authorize(creds)
-    return client.open("Telegram Reminders").sheet1
+    sheet = client.open("Telegram Reminders").sheet1
+    return sheet
 
+# Add new reminder to sheet
+def add_to_google_sheet(chat_id, type_, name, date, time_):
+    try:
+        sheet = get_google_sheet()
+        sheet.append_row([str(chat_id), type_, name, date, time_])
+        print("✅ Added to Google Sheet:", name, date, time_)
+    except Exception as e:
+        print("❌ Error adding to Google Sheet:", e)
+
+# Send reminders by checking the sheet
 def send_reminders():
     try:
         now = datetime.now(IST)
         current_time = now.strftime("%H:%M")
         today = now.strftime("%d-%m")
 
-        print(f"⏱️ send_reminders called — today: {today}, current_time: {current_time}")
         sheet = get_google_sheet()
         records = sheet.get_all_records()
-        print(f"🔍 Retrieved {len(records)} records from Google Sheet")
 
         for entry in records:
             if entry["date"][:5] == today and entry["time"] == current_time:
                 years = now.year - int(entry["date"][-4:])
-                msg = (f"🎂 Aaj {entry['name']} ka Birthday hai! {years} saal ke ho gaye hain. Mubarak ho!"
-                       if entry["type"] == "Birthday"
-                       else f"💍 Aaj {entry['name']} ki shaadi ki {years}vi anniversary hai! Mubarak ho!")
+                if entry["type"] == "Birthday":
+                    msg = f"🎂 Aaj {entry['name']} ka Birthday hai! {years} saal ke ho gaye hain. Mubarak ho!"
+                else:
+                    msg = f"💍 Aaj {entry['name']} ki shaadi ki {years}vi anniversary hai! Mubarak ho!"
                 try:
                     bot.send_message(int(entry["chat_id"]), msg)
                     print(f"✅ Reminder sent to {entry['name']} at {entry['chat_id']}")
@@ -70,30 +58,66 @@ def send_reminders():
     except Exception as e:
         print("❌ Error in send_reminders():", e)
 
-# === Message handlers ===
+# Schedule checker
+def schedule_checker():
+    schedule.every().minute.do(send_reminders)
+    while True:
+        schedule.run_pending()
+        time.sleep(30)
+
+# Start schedule in background
+threading.Thread(target=schedule_checker, daemon=True).start()
+
+# Conversation flow
+user_state = {}
+
 @bot.message_handler(commands=['start'])
-def send_welcome(message):
-    bot.reply_to(message, "👋 Welcome! Main reminder bot hoon. Mujhe birthday ya anniversary ka data bhejiye.")
+def start(message):
+    bot.reply_to(message, "Namaste! Kis cheez ka reminder chahiye?\n1. Birthday\n2. Anniversary")
 
-@bot.message_handler(func=lambda message: True)
-def echo_all(message):
-    bot.reply_to(message, "📩 Aapne likha: " + message.text)
+@bot.message_handler(func=lambda m: True)
+def handle_all(message):
+    chat_id = message.chat.id
+    text = message.text.strip()
+    state = user_state.get(chat_id, {})
 
-# === Webhook endpoint ===
-@app.route(f'/{TOKEN}', methods=['POST'])
-def receive_update():
-    json_string = request.get_data().decode('utf-8')
-    update = telebot.types.Update.de_json(json_string)
-    bot.process_new_updates([update])
-    return '!', 200
+    if not state:
+        if text in ["1", "2"]:
+            user_state[chat_id] = {"type": "Birthday" if text == "1" else "Anniversary"}
+            bot.reply_to(message, "Naam bataiye (jiska reminder chahiye):")
+        else:
+            bot.reply_to(message, "Pehle choose karein:\n1. Birthday\n2. Anniversary")
+    elif "type" in state and "name" not in state:
+        user_state[chat_id]["name"] = text
+        bot.reply_to(message, "Date bataiye Birthday/Shaadi ki (jaise: 01-01-2000 ya 1 Jan 2000):")
+    elif "name" in state and "date" not in state:
+        try:
+            dob = parser.parse(text, dayfirst=True).date()
+            user_state[chat_id]["date"] = dob.strftime("%d-%m-%Y")
+            bot.reply_to(message, "Kitne baje reminder chahiye? (jaise: 08:00 AM ya 07:30 PM)")
+        except:
+            bot.reply_to(message, "❌ Date format samajh nahi aaya. Dobara likhein (01-01-2000 ya 1 Jan 2000)")
+    elif "date" in state and "time" not in state:
+        try:
+            user_time = datetime.strptime(text.upper(), "%I:%M %p").time()
+            formatted_time = user_time.strftime("%H:%M")
 
-# === Optional health check ===
-@app.route('/', methods=['GET'])
-def index():
-    return "Bot is running!", 200
+            entry = {
+                "chat_id": chat_id,
+                "type": state["type"],
+                "name": state["name"],
+                "date": state["date"],
+                "time": formatted_time
+            }
 
-# === Main entry point ===
-if __name__ == '__main__':
-    bot.remove_webhook()
-    bot.set_webhook(url=f"{os.environ.get('RENDER_APP_URL')}/{TOKEN}")
-    app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 5000)))
+            add_to_google_sheet(chat_id, entry["type"], entry["name"], entry["date"], entry["time"])
+            bot.reply_to(message, f"✅ Reminder saved!\n{entry['type']} of {entry['name']} on {entry['date']} at {text.upper()}")
+            user_state.pop(chat_id, None)
+        except:
+            bot.reply_to(message, "❌ Time format galat hai. Please likhein: 08:00 AM ya 07:30 PM")
+    else:
+        bot.reply_to(message, "Kuch galat likh diya hai. /start se dobara try karein.")
+
+# Start polling
+bot.remove_webhook()
+bot.infinity_polling()
