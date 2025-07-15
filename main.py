@@ -31,24 +31,37 @@ def add_reminder(chat_id, type_, name, date, time_):
 # Scheduler Task
 def send_reminders():
     now = datetime.now(IST)
-    today = now.strftime("%d-%m")
-    now_time = now.strftime("%H:%M")
-
     sheet = get_sheet()
     data = sheet.get_all_records()
-    
+
     for row in data:
-        if row['date'][:5] == today and row['time'] == now_time:
-            year = now.year - int(row['date'][-4:])
-            if row['type'].lower() == "birthday":
-                msg = f"🎂 Aaj {row['name']} ka Birthday hai! {year} saal ke ho gaye hain. Mubarak ho!"
+        try:
+            # Date and time parse karo
+            reminder_date = datetime.strptime(row['date'].strip(), "%d-%m-%Y")
+            reminder_time = datetime.strptime(row['time'].strip(), "%H:%M").time()
+
+            # Sirf day aur month check karo
+            if reminder_date.day == now.day and reminder_date.month == now.month:
+                # Time me 1 minute ka gap allow karo
+                reminder_datetime = datetime.combine(now.date(), reminder_time)
+                time_diff = abs((reminder_datetime - now).total_seconds())
+
+                if time_diff <= 60:
+                    year = now.year - reminder_date.year
+                    if row['type'].lower() == "birthday":
+                        msg = f"🎂 Aaj {row['name']} ka Birthday hai! {year} saal ke ho gaye hain. Mubarak ho!"
+                    else:
+                        msg = f"💍 Aaj {row['name']} ki {year}vi Anniversary hai! Mubarak ho!"
+                    
+                    # Send message
+                    bot.send_message(int(row["chat_id"]), msg)
+                    print(f"✅ Sent reminder to {row['name']}")
+                else:
+                    print(f"⏱ Not time yet for {row['name']}")
             else:
-                msg = f"💍 Aaj {row['name']} ki {year}vi Anniversary hai! Mubarak ho!"
-            try:
-                bot.send_message(int(row["chat_id"]), msg)
-                print(f"✅ Sent reminder to {row['name']}")
-            except Exception as e:
-                print(f"❌ Error sending message: {e}")
+                print(f"📅 Not today for {row['name']}")
+        except Exception as e:
+            print(f"❌ Error processing row: {e}")
 
 # Setup scheduler
 scheduler = BackgroundScheduler()
