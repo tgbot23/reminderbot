@@ -5,11 +5,11 @@ app = Flask('')
 
 @app.route('/')
 def home():
-    return "Bot is alive!"
+    return "🤖 Reminder Bot is running."
 
-def run():
-    app.run(host='0.0.0.0', port=8080)
+@app.route('/health')
+def health():
+    return "OK", 200
 
 def keep_alive():
-    t = Thread(target=run)
-    t.start()
+    Thread(target=lambda: app.run(host='0.0.0.0', port=int(os.environ.get("PORT",5000)))).start()
