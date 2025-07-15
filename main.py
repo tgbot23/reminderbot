@@ -1,97 +1,86 @@
 import os
-import logging
-import time
-from flask import Flask, request
-from telebot import TeleBot, types
-from apscheduler.schedulers.background import BackgroundScheduler
+import json
+import telebot
 import gspread
+from flask import Flask, request
+from apscheduler.schedulers.background import BackgroundScheduler
 from oauth2client.service_account import ServiceAccountCredentials
 from datetime import datetime
 
-# ========== Logging setup ==========
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+# ---- Constants ----
+BOT_TOKEN = os.getenv("BOT_TOKEN")
+GOOGLE_CREDS_JSON = os.getenv("GOOGLE_CREDS_JSON")
 
-# ========== Environment Setup ==========
-BOT_TOKEN = os.environ.get("BOT_TOKEN")
-GOOGLE_CREDS_JSON = os.environ.get("GOOGLE_CREDS_JSON")
+bot = telebot.TeleBot(BOT_TOKEN)
+app = Flask(__name__)
 
-# ========== Google Sheets Setup ==========
-scope = ['https://spreadsheets.google.com/feeds', 'https://www.googleapis.com/auth/drive']
-creds = ServiceAccountCredentials.from_json_keyfile_name(GOOGLE_CREDS_JSON, scope)
+# ---- Google Sheets Setup ----
+scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
+
+# Convert JSON string to dictionary and use it
+google_creds_dict = json.loads(GOOGLE_CREDS_JSON)
+creds = ServiceAccountCredentials.from_json_keyfile_dict(google_creds_dict, scope)
 client = gspread.authorize(creds)
 sheet = client.open("Telegram reminders").sheet1
 
-# ========== Bot Setup ==========
-bot = TeleBot(BOT_TOKEN)
-app = Flask(__name__)
-scheduler = BackgroundScheduler()
-
-# ========== Reminder Function ==========
+# ---- Reminder Check Function ----
 def check_reminders():
-    try:
-        logger.info("🔁 Checking reminders...")
-        records = sheet.get_all_records()
-        now = datetime.now().strftime("%Y-%m-%d %H:%M")
-        for row in records:
-            name = row.get("Name")
-            chat_id = row.get("ChatID")
-            message = row.get("Message")
-            reminder_time = row.get("DateTime")  # format: YYYY-MM-DD HH:MM
-            sent = row.get("Sent")
+    print("[Scheduler] Checking for due reminders...")
+    data = sheet.get_all_records()
+    now = datetime.now().strftime('%Y-%m-%d %H:%M')
 
-            if reminder_time == now and str(sent).lower() != "yes":
-                try:
-                    logger.info(f"⏰ Sending reminder to {name} ({chat_id})")
-                    bot.send_message(chat_id, f"🔔 Reminder: {message}")
-                    sheet.update_cell(records.index(row) + 2, 5, "Yes")  # Column E = Sent
-                    logger.info(f"✅ Sent and updated sheet for {name}")
-                except Exception as e:
-                    logger.error(f"❌ Failed to send reminder to {chat_id}: {e}")
-        logger.info("✅ Reminder check complete.\n")
-    except Exception as e:
-        logger.error(f"🔥 Error checking reminders: {e}")
+    for row in data:
+        if str(row.get("Notified")).strip().lower() == "yes":
+            continue
 
-# ========== Scheduler Setup ==========
-scheduler.add_job(check_reminders, 'interval', minutes=1)
+        scheduled_time = str(row.get("DateTime")).strip()
+        if scheduled_time == now:
+            chat_id = str(row.get("ChatID")).strip()
+            message = str(row.get("Message")).strip()
+            bot.send_message(chat_id, f"⏰ Reminder: {message}")
+            row_number = data.index(row) + 2
+            sheet.update_cell(row_number, 5, "Yes")
+            print(f"[✅] Reminder sent to {chat_id}")
+
+# ---- Scheduler Setup ----
+scheduler = BackgroundScheduler()
+scheduler.add_job(check_reminders, trigger='interval', minutes=1)
 scheduler.start()
-logger.info("✅ Scheduler thread started")
+print("✅ Scheduler thread started")
 
-# ========== Bot Handlers ==========
+# ---- Webhook (for Flask) ----
+@app.route(f"/{BOT_TOKEN}", methods=["POST"])
+def webhook():
+    json_str = request.get_data().decode("utf-8")
+    update = telebot.types.Update.de_json(json_str)
+    bot.process_new_updates([update])
+    return "OK", 200
+
+@app.route("/", methods=["GET", "HEAD"])
+def index():
+    return "Bot is running", 200
+
+# ---- Telegram Handlers ----
 @bot.message_handler(commands=['start'])
-def handle_start(message):
-    bot.reply_to(message, "👋 Welcome! Send me your reminder in format:\n`YYYY-MM-DD HH:MM | Your message`", parse_mode="Markdown")
+def start_handler(message):
+    bot.reply_to(message, "Welcome! Send your reminder in this format:\n\n`Reminder message | yyyy-mm-dd hh:mm`", parse_mode="Markdown")
 
-@bot.message_handler(func=lambda m: True)
-def handle_text(message):
+@bot.message_handler(func=lambda message: True)
+def reminder_handler(message):
     try:
         text = message.text
-        if "|" in text:
-            dt, msg = map(str.strip, text.split("|", 1))
-            datetime.strptime(dt, "%Y-%m-%d %H:%M")  # Validate format
-            sheet.append_row([message.from_user.first_name, message.chat.id, msg, dt, "No"])
-            bot.reply_to(message, "✅ Reminder set successfully.")
-        else:
-            bot.reply_to(message, "⚠️ Please send in correct format:\n`YYYY-MM-DD HH:MM | Message`", parse_mode="Markdown")
+        if '|' not in text:
+            bot.reply_to(message, "Invalid format. Use:\n`Message | yyyy-mm-dd hh:mm`", parse_mode="Markdown")
+            return
+
+        msg, dt = map(str.strip, text.split('|'))
+        datetime.strptime(dt, "%Y-%m-%d %H:%M")  # Validate time
+
+        sheet.append_row([message.chat.id, message.chat.first_name, msg, dt, ""])
+        bot.reply_to(message, f"✅ Reminder set for {dt}")
     except Exception as e:
-        bot.reply_to(message, f"❌ Error: {e}")
+        bot.reply_to(message, f"❌ Error: {str(e)}")
 
-# ========== Flask Routes ==========
-@app.route('/')
-def index():
-    return 'Bot is running!'
-
-@app.route(f"/{BOT_TOKEN}", methods=['POST'])
-def webhook():
-    update = types.Update.de_json(request.get_json())
-    bot.process_new_updates([update])
-    return 'ok'
-
-# ========== Main Entrypoint ==========
-if __name__ == '__main__':
-    bot.remove_webhook()
-    time.sleep(1)
-    logger.info("📡 Removed existing webhook. Starting polling...")
-    import threading
-    threading.Thread(target=lambda: bot.infinity_polling(timeout=60, long_polling_timeout=10)).start()
-    app.run(host='0.0.0.0', port=10000)
+# ---- Main ----
+if __name__ == "__main__":
+    app.run(host="0.0.0.0", port=10000)
