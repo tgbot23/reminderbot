@@ -25,7 +25,7 @@ def get_sheet():
 
 def add_reminder(chat_id, type_, name, date, time_):
     sheet = get_sheet()
-    sheet.append_row([str(chat_id), name, type_, date, time_])
+    sheet.append_row([str(chat_id), type_, name, date, time_])
     print(f"✅ Added: {name}, {type_}, {date} at {time_}")
 
 # Scheduler Task
