@@ -101,6 +101,10 @@ def handle_all(message):
 @app.route("/")
 def home():
     return "Bot is running"
+@app.route('/check_reminders')
+def manual_trigger():
+    send_reminders()
+    return "✅ Checked reminders"
 
 @app.route(f"/{TOKEN}", methods=["POST"])
 def webhook():
