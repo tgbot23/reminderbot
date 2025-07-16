@@ -1,4 +1,4 @@
- import os
+import os
 import json
 import gspread
 import telebot
@@ -8,6 +8,7 @@ from datetime import datetime
 from apscheduler.schedulers.background import BackgroundScheduler
 from dateutil import parser
 import pytz
+from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
 
 # Init
 TOKEN = os.environ["BOT_TOKEN"]
@@ -36,37 +37,38 @@ def send_reminders():
 
     for row in data:
         try:
-            # Date and time parse karo
             reminder_date = datetime.strptime(row['date'].strip(), "%d-%m-%Y")
             reminder_time = datetime.strptime(row['time'].strip(), "%H:%M").time()
 
-            # Sirf day aur month check karo
             if reminder_date.day == now.day and reminder_date.month == now.month:
-                # Time me 1 minute ka gap allow karo
                 reminder_datetime = datetime.combine(now.date(), reminder_time)
-                # ✅ Only localize if tzinfo is None (naive datetime)
                 if reminder_datetime.tzinfo is None:
                     reminder_datetime = IST.localize(reminder_datetime)
                 time_diff = abs((reminder_datetime - now).total_seconds())
                 print(f"Now IST: {now.strftime('%d-%m-%Y %H:%M:%S')}, Reminder Time: {reminder_datetime.strftime('%d-%m-%Y %H:%M:%S')}, Diff: {time_diff}")
                 if time_diff <= 60:
-                    year = now.year - reminder_date.year
+                    name = row['name']
                     if row['type'].lower() == "birthday":
-                           msg = (
+                        msg = (
                             f"🎉 *Hello Hello! Jaldi se {name} ko wish kar do!* 🎂\n"
-                               f"Aaj inka *Birthday* hai 😍\n"
-                              f"Zindagi ka ek aur beautiful saal jud gaya 💫\n"
-                              f"Unhe ek pyaara sa message bhejna na bhoolna 💌\n\n"
-                              f"🎈 *Janamdin ki hardik shubhkamnaye , {name}!* 🎊" )
-                else:
-                    msg = (
-                f"💖 *Aree suno suno! Aaj hai {name} ki Shaadi ki Salgirah!* 💍\n"
-                f"🎊 Pyar bhara din hai... ek aur saal milke jeene ka 🥰\n"
-                f"Unko aur unke jeevan saathi ko bhejo *Dil se Salgirah ki  Shubhkamnaye* ❤️\n\n"
-                f"🌹 *Happy Anniversary, {name}!* 💐"  )
-                    
-                    # Send message
-                    bot.send_message(int(row["chat_id"]), msg)
+                            f"Aaj inka *Birthday* hai 😍\n"
+                            f"Zindagi ka ek aur beautiful saal jud gaya 💫\n"
+                            f"Unhe ek pyaara sa message bhejna na bhoolna 💌\n\n"
+                            f"🎈 *Janamdin ki hardik shubhkamnaye , {name}!* 🎊"
+                        )
+                        wish_text = f"Happy Birthday, {name}! 🎂"
+                    else:
+                        msg = (
+                            f"💖 *Aree suno suno! Aaj hai {name} ki Shaadi ki Salgirah!* 💍\n"
+                            f"🎊 Pyar bhara din hai... ek aur saal milke jeene ka 🥰\n"
+                            f"Unko aur unke jeevan saathi ko bhejo *Dil se Salgirah ki Shubhkamnaye* ❤️\n\n"
+                            f"🌹 *Happy Anniversary, {name}!* 💐"
+                        )
+                        wish_text = f"Happy Anniversary, {name}! 💍"
+
+                    keyboard = InlineKeyboardMarkup()
+                    keyboard.add(InlineKeyboardButton("🎉 Wish Now", switch_inline_query=wish_text))
+                    bot.send_message(int(row["chat_id"]), msg, parse_mode="Markdown", reply_markup=keyboard)
                     print(f"✅ Sent reminder to {row['name']}")
                 else:
                     print(f"⏱ Not time yet for {row['name']}")
@@ -84,62 +86,4 @@ scheduler.start()
 @bot.message_handler(commands=["start"])
 def start(message):
     chat_id = message.chat.id
-    user_state[chat_id] = {}
-    bot.send_message(chat_id, "Namaste! Reminder chahiye:\n1. Birthday\n2. Anniversary")
-
-@bot.message_handler(func=lambda m: True)
-def handle_all(message):
-    chat_id = message.chat.id
-    text = message.text.strip()
-    state = user_state.get(chat_id, {})
-
-    if not state:
-        if text in ["1", "2"]:
-            user_state[chat_id] = {"type": "Birthday" if text == "1" else "Anniversary"}
-            bot.send_message(chat_id, "Naam bataiye jiska reminder chahiye:")
-        else:
-            bot.send_message(chat_id, "❌ Please choose 1 or 2:\n1. Birthday\n2. Anniversary")
-    elif "type" in state and "name" not in state:
-        state["name"] = text
-        bot.send_message(chat_id, "Date likhiye (01-01-2000 ya 1 Jan 2000):")
-    elif "name" in state and "date" not in state:
-        try:
-            dob = parser.parse(text, dayfirst=True).date()
-            state["date"] = dob.strftime("%d-%m-%Y")
-            bot.send_message(chat_id, "Time likhiye (08:00 AM ya 07:30 PM):")
-        except:
-            bot.send_message(chat_id, "❌ Date format galat hai.")
-    elif "date" in state and "time" not in state:
-        try:
-            user_time = datetime.strptime(text.upper(), "%I:%M %p").time()
-            formatted_time = user_time.strftime("%H:%M")
-            state["time"] = formatted_time
-            add_reminder(chat_id, state["type"], state["name"], state["date"], state["time"])
-            bot.send_message(chat_id, f"✅ Reminder saved for {state['name']} at {text.upper()}")
-            user_state.pop(chat_id, None)
-        except:
-            bot.send_message(chat_id, "❌ Time format galat hai.")
-    else:
-        bot.send_message(chat_id, "❌ Error. Dobara /start karein.")
-
-# Flask webhook route
-@app.route("/")
-def home():
-    return "Bot is running"
-@app.route('/check_reminders')
-def manual_trigger():
-    send_reminders()
-    return "✅ Checked reminders"
-
-@app.route(f"/{TOKEN}", methods=["POST"])
-def webhook():
-    bot.process_new_updates([telebot.types.Update.de_json(request.stream.read().decode("utf-8"))])
-    return "OK"
-
-# Set webhook
-bot.remove_webhook()
-bot.set_webhook(url=f"{os.environ['RENDER_APP_URL']}/{TOKEN}")
-
-# Flask run
-if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=10000)
+    user_state[chat
