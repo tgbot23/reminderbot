@@ -44,8 +44,9 @@ def send_reminders():
             if reminder_date.day == now.day and reminder_date.month == now.month:
                 # Time me 1 minute ka gap allow karo
                 reminder_datetime = datetime.combine(now.date(), reminder_time)
-                # ❗ Make reminder_datetime timezone-aware
-                reminder_datetime = reminder_datetime.replace(tzinfo=IST)
+                # ✅ Only localize if tzinfo is None (naive datetime)
+                if reminder_datetime.tzinfo is None:
+                    reminder_datetime = IST.localize(reminder_datetime)
                 time_diff = abs((reminder_datetime - now).total_seconds())
                 print(f"Now IST: {now.strftime('%d-%m-%Y %H:%M:%S')}, Reminder Time: {reminder_datetime.strftime('%d-%m-%Y %H:%M:%S')}, Diff: {time_diff}")
                 if time_diff <= 60:
