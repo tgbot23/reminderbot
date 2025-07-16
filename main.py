@@ -65,7 +65,7 @@ def send_reminders():
                 f"🎊 Pyar bhara din hai... ek aur saal milke jeene ka 🥰\n"
                 f"Unko aur unke jeevan saathi ko bhejo *Dil se Salgirah ki  Shubhkamnaye* ❤️\n\n"
                 f"🌹 *Happy Anniversary, {name}!* 💐"
-    )
+                                                    )
                     
                     # Send message
                     bot.send_message(int(row["chat_id"]), msg)
