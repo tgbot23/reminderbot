@@ -47,7 +47,7 @@ def send_reminders():
                 # ❗ Make reminder_datetime timezone-aware
                 reminder_datetime = reminder_datetime.replace(tzinfo=IST)
                 time_diff = abs((reminder_datetime - now).total_seconds())
-
+                print(f"Now IST: {now.strftime('%d-%m-%Y %H:%M:%S')}, Reminder Time: {reminder_datetime.strftime('%d-%m-%Y %H:%M:%S')}, Diff: {time_diff}")
                 if time_diff <= 60:
                     year = now.year - reminder_date.year
                     if row['type'].lower() == "birthday":
