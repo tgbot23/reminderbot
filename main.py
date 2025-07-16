@@ -54,18 +54,16 @@ def send_reminders():
                     if row['type'].lower() == "birthday":
                            msg = (
                             f"🎉 *Hello Hello! Jaldi se {name} ko wish kar do!* 🎂\n"
-                f"Aaj inka *Birthday* hai 😍\n"
-                f"Zindagi ka ek aur beautiful saal jud gaya 💫\n"
-                f"Unhe ek pyaara sa message bhejna na bhoolna 💌\n\n"
-                f"🎈 *Janamdin ki hardik shubhkamnaye , {name}!* 🎊"
-                    )
+                               f"Aaj inka *Birthday* hai 😍\n"
+                              f"Zindagi ka ek aur beautiful saal jud gaya 💫\n"
+                              f"Unhe ek pyaara sa message bhejna na bhoolna 💌\n\n"
+                              f"🎈 *Janamdin ki hardik shubhkamnaye , {name}!* 🎊" )
                 else:
                     msg = (
                 f"💖 *Aree suno suno! Aaj hai {name} ki Shaadi ki Salgirah!* 💍\n"
                 f"🎊 Pyar bhara din hai... ek aur saal milke jeene ka 🥰\n"
                 f"Unko aur unke jeevan saathi ko bhejo *Dil se Salgirah ki  Shubhkamnaye* ❤️\n\n"
-                f"🌹 *Happy Anniversary, {name}!* 💐"
-                                                    )
+                f"🌹 *Happy Anniversary, {name}!* 💐"  )
                     
                     # Send message
                     bot.send_message(int(row["chat_id"]), msg)
